@@ -1,0 +1,26 @@
+
+# Private/Secret files
+.env
+.env.*
+*.secret
+*.key
+credentials.json
+google-services.json
+service-account.json
+secrets.py
+api_keys.py
+config_private.py
+
+# Build/OS
+__pycache__/
+*.pyc
+node_modules/
+.DS_Store
+*.log
+venv/
+.venv/
+dist/
+build/
+*.spec
+*.db
+*.sqlite3
