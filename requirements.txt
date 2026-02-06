@@ -1,0 +1,9 @@
+playwright
+beautifulsoup4
+requests
+pandas
+openpyxl
+cryptography
+pyside6
+sqlalchemy
+python-dotenv
