@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>lead_scraper_pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.3);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(76, 29, 149, 0.15) 0%, transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(14, 165, 233, 0.15) 0%, transparent 25%);
+        }
+
+        .container {
+            max-width: 800px;
+            width: 90%;
+            text-align: center;
+            padding: 2rem;
+            z-index: 10;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 4rem 2rem;
+            box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            animation: fadeIn 1s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #ec4899, #8b5cf6, #3b82f6);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.6);
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(to right, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+
+        p.description {
+            font-size: 1.25rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin-bottom: 2.5rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .tags {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-bottom: 3rem;
+        }
+
+        .tag {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            transition: all 0.2s ease;
+        }
+
+        .tag:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--text-secondary);
+        }
+
+        .actions {
+            display: flex;
+            gap: 1.5rem;
+            justify-content: center;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            box-shadow: 0 4px 14px 0 rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 rgba(37, 99, 235, 0.4);
+        }
+
+        footer {
+            margin-top: 3rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            opacity: 0.7;
+        }
+
+        @media (max-width: 640px) {
+            .card { padding: 2rem 1.5rem; }
+            h1 { font-size: 2.5rem; }
+            .actions { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>lead_scraper_pro</h1>
+            <p class="description">No description available.</p>
+            
+            <div class="tags">
+                <span class="tag">Open Source</span>
+            </div>
+
+            <div class="actions">
+                <a href="https://github.com/Shivay00001/lead_scraper_pro" class="btn btn-primary" target="_blank">View on GitHub</a>
+            </div>
+            
+            <footer>
+                <p>Host on GitHub Pages</p>
+            </footer>
+        </div>
+    </div>
+</body>
+</html>
