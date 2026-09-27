@@ -18,7 +18,7 @@ def launch_gui():
         gui_main()
     except ImportError as e:
         print(f"[ERROR] GUI requirements not met (PySide6). Error: {e}")
-        print("Install with: pip install PySide6")
+        print("Install with: pip install -r requirements-gui.txt")
         sys.exit(1)
 
 def main():

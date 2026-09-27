@@ -59,9 +59,15 @@ class DatabaseManager:
             pass  # Fail silently on auto-backup
             
     def _init_encryption(self, key: str = None):
-        """Initialize Fernet encryption with derived key."""
+        """Initialize Fernet encryption with derived key.
+
+        Key material must come from the caller (env/config) or a per-user
+        persisted key file. A hardcoded default key is never acceptable,
+        because anyone with the source could decrypt every database.
+        """
         if key is None:
-            key = "LeadScraperPro2024!DefaultKey"
+            from core import config as app_config
+            key = app_config.encryption_key()
         
         # Derive a proper key using PBKDF2
         salt = b'lead_scraper_pro_salt_v1'
@@ -610,8 +616,16 @@ class DatabaseManager:
 _db_instance = None
 
 def get_database() -> DatabaseManager:
-    """Get or create singleton database instance."""
+    """Get or create singleton database instance.
+
+    db_path and encryption key resolve through core.config, so they are
+    always environment-driven (LSP_DB_PATH / LSP_ENCRYPTION_KEY).
+    """
     global _db_instance
     if _db_instance is None:
-        _db_instance = DatabaseManager()
+        from core import config as app_config
+        _db_instance = DatabaseManager(
+            db_path=app_config.db_path(),
+            encryption_key=app_config.encryption_key(),
+        )
     return _db_instance

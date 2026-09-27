@@ -1,9 +1,10 @@
-playwright
-beautifulsoup4
-requests
-pandas
-openpyxl
-cryptography
-pyside6
-sqlalchemy
-python-dotenv
+# Lead Scraper Pro — headless (CLI) dependencies.
+# Install: pip install -r requirements.txt && playwright install chromium
+# For the optional desktop GUI: pip install -r requirements-gui.txt
+playwright>=1.44
+beautifulsoup4>=4.12
+requests>=2.32
+pandas>=2.2
+openpyxl>=3.1
+cryptography>=42.0
+python-dotenv>=1.0

@@ -32,7 +32,10 @@ AQIDAQAB
 class LicenseValidator:
     """Validates license keys using cryptographic signatures."""
     
-    # License API endpoint (for online validation)
+    # License API endpoint (for online validation).
+    # The default is the product's own license server; override with the
+    # LSP_LICENSE_SERVER_URL environment variable for self-hosted setups.
+    # See core/config.py and .env.example.
     API_ENDPOINT = "https://api.leadscraperpro.com/v1/license"
     
     # Plan configurations
@@ -79,13 +82,30 @@ class LicenseValidator:
     }
     
     def __init__(self):
-        """Initialize license validator."""
+        """Initialize license validator.
+
+        Public key source: LSP_PUBLIC_KEY_PATH (a PEM file you generate with
+        admin_keygen.py) takes precedence; otherwise the embedded DEMO key is
+        used. The embedded key is for development only — replace it before
+        selling licenses.
+        """
+        key_pem = self._load_public_key_pem()
         self.public_key = serialization.load_pem_public_key(
-            PUBLIC_KEY_PEM.encode(),
+            key_pem,
             backend=default_backend()
         )
         self._cached_license = None
         self._last_validation = None
+
+    @staticmethod
+    def _load_public_key_pem() -> bytes:
+        """Load the PEM public key: env file override or embedded demo key."""
+        from core import config as app_config
+        path = app_config.public_key_path()
+        if path and os.path.exists(path):
+            with open(path, "rb") as f:
+                return f.read()
+        return PUBLIC_KEY_PEM.encode()
     
     def _decode_license_key(self, license_key: str) -> Optional[Dict]:
         """
@@ -134,23 +154,28 @@ class LicenseValidator:
         """
         Check if license is revoked remotely (Kill Switch).
         Returns True if revoked (banned), False if safe.
+
+        The revocation list URL comes from the LSP_REVOCATION_URL environment
+        variable (see .env.example). When unset, the check is skipped.
+        On any network error the check fails open (assumes safe).
         """
+        from core import config as app_config
+        revocation_url = app_config.revocation_url()
+        if not revocation_url:
+            return False
+
         try:
-            # Placeholder for user's revocation URL (e.g., GitHub Gist raw URL)
-            # You can update this URL to a text file containing banned keys
-            REVOCATION_URL = "https://gist.githubusercontent.com/placeholder/banned_keys.txt"
-            
             # fast timeout, fail safe (if internet down, don't block app unless certain)
-            response = requests.get(REVOCATION_URL, timeout=3)
-            
+            response = requests.get(revocation_url, timeout=3)
+
             if response.status_code == 200:
                 banned_keys = response.text.splitlines()
                 # Check for exact match
                 if any(license_key.strip() == key.strip() for key in banned_keys):
                     return True
-            
+
             return False
-        except:
+        except Exception:
             # If network error, assume safe (fail open) or strict (fail closed)
             # For user experience, we usually fail open unless strict security needed
             return False
@@ -166,9 +191,32 @@ class LicenseValidator:
         if self.check_revocation_status(license_key):
             return False, {'error': 'This license has been revoked by the administrator.'}
 
-        # 2. Proceed with validation (Simulated online check since we don't have a backend yet)
-        # In a real scenario, you'd hit your API here.
-        # For now, we fall back to offline crypto validation which is secure enough
+        # 2. Online server check. The endpoint is env-configurable
+        # (LSP_LICENSE_SERVER_URL, see .env.example); offline crypto
+        # validation is the fallback and is secure enough on its own.
+        return self._validate_server_or_offline(license_key)
+
+    def _validate_server_or_offline(self, license_key: str) -> Tuple[bool, Dict]:
+        """
+        Try the license server; fall back to offline signature validation
+        when the server is unreachable or returns nothing usable.
+        """
+        from core import config as app_config
+        endpoint = app_config.license_server_url() or self.API_ENDPOINT
+        try:
+            response = requests.get(
+                endpoint,
+                params={"key": license_key},
+                timeout=5,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, dict) and "valid" in data:
+                    if data["valid"]:
+                        return True, data
+                    return False, {"error": data.get("error", "License rejected by server")}
+        except Exception:
+            pass  # fall through to offline validation
         return self.validate_offline(license_key)
     
     def validate_offline(self, license_key: str) -> Tuple[bool, Dict]:

@@ -1,6 +1,15 @@
-version: '3.8'
 services:
   app:
     build: .
+    env_file:
+      - .env  # optional; all vars documented in .env.example
+    environment:
+      LSP_DB_PATH: /app/data/leads.db
     volumes:
-      - ./:/app
+      - lsp_data:/app/data
+    # Run a one-off command:
+    #   docker compose run --rm app status
+    #   docker compose run --rm app scrape google_maps "restaurants" -l Mumbai -m 50
+
+volumes:
+  lsp_data:

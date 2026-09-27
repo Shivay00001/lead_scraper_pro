@@ -6,6 +6,7 @@ Main CLI for the lead scraping application.
 import argparse
 import sys
 import os
+import json
 from datetime import datetime
 from typing import Optional
 
@@ -13,10 +14,40 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.scraper_engine import get_engine, ScraperEngine
+from core import config as app_config
 from license.plan_manager import get_plan_manager, PlanManager
 from storage.database import get_database, DatabaseManager
 from export.csv_exporter import get_csv_exporter
 from export.json_exporter import get_json_exporter
+
+
+class ValidationError(Exception):
+    """Raised when user input fails validation. Never carries a stack trace to users."""
+
+
+def validate_text(value: Optional[str], name: str, min_len: int = 1, max_len: int = 200) -> str:
+    """Validate a free-text CLI input (query, location, key, ...)."""
+    if value is None:
+        raise ValidationError(f"{name} is required.")
+    cleaned = str(value).strip()
+    if len(cleaned) < min_len:
+        raise ValidationError(f"{name} must not be empty.")
+    if len(cleaned) > max_len:
+        raise ValidationError(f"{name} must be at most {max_len} characters.")
+    return cleaned
+
+
+def validate_int(value: Optional[int], name: str, min_value: int, max_value: int) -> int:
+    """Validate an integer CLI input within an inclusive range."""
+    if value is None:
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise ValidationError(f"{name} must be an integer.")
+    if not (min_value <= number <= max_value):
+        raise ValidationError(f"{name} must be between {min_value} and {max_value}.")
+    return number
 
 
 class LeadScraperCLI:
@@ -31,20 +62,37 @@ class LeadScraperCLI:
         self.plan_manager: PlanManager = None
         self.db: DatabaseManager = None
         self._initialized = False
-    
+        self.json_mode = False
+
+    def emit(self, payload: dict):
+        """Print a machine-readable result when --json is used, else nothing."""
+        if self.json_mode:
+            print(json.dumps(payload))
+        return payload
+
+    def fail(self, message: str, code: int = 1):
+        """Structured error output. Never leaks stack traces to clients."""
+        if self.json_mode:
+            print(json.dumps({"ok": False, "error": message}))
+        else:
+            print(f"[ERROR] {message}")
+        raise SystemExit(code)
+
     def _init_components(self):
         """Lazy initialization of components."""
         if self._initialized:
             return
-        
+
         try:
             self.db = get_database()
             self.plan_manager = get_plan_manager()
             self.engine = get_engine()
             self._initialized = True
+        except ValidationError:
+            raise
         except Exception as e:
-            print(f"[ERROR] Failed to initialize: {e}")
-            sys.exit(1)
+            # Sanitized: never expose internals/tracebacks to the user.
+            self.fail("Failed to initialize. Check LSP_DB_PATH and LSP_ENCRYPTION_KEY.", code=3)
     
     def print_banner(self):
         """Print application banner."""
@@ -65,6 +113,38 @@ class LeadScraperCLI:
             print("\nExiting...")
             sys.exit(0)
     
+    def cmd_health(self, args):
+        """Health check: verifies app boots, DB opens, and config resolves."""
+        try:
+            self._init_components()
+            usage = self.plan_manager.get_usage_summary()
+            payload = {
+                "ok": True,
+                "status": "ok",
+                "app": self.APP_NAME,
+                "version": self.VERSION,
+                "plan": usage.get("plan_name"),
+                "database": "reachable",
+                "platforms_available": len(usage.get("platforms", [])),
+                "encryption": "env" if app_config.get("LSP_ENCRYPTION_KEY") else "auto-generated",
+            }
+        except SystemExit:
+            raise
+        except Exception:
+            payload = {"ok": False, "status": "error", "error": "Health check failed"}
+
+        if self.json_mode or not payload["ok"]:
+            print(json.dumps(payload))
+            if not payload["ok"]:
+                raise SystemExit(3)
+            return payload
+
+        print(f"[OK] {self.APP_NAME} v{self.VERSION} — status ok")
+        print(f"  Plan:     {payload['plan']}")
+        print(f"  Database: {payload['database']}")
+        print(f"  Platforms available: {payload['platforms_available']}")
+        return payload
+
     def cmd_status(self, args):
         """Show license and usage status."""
         self._init_components()
@@ -90,45 +170,48 @@ class LeadScraperCLI:
     def cmd_activate(self, args):
         """Activate a license key."""
         self._init_components()
-        
+
         license_key = args.key
         if not license_key:
             license_key = input("Enter your license key: ").strip()
-        
-        if not license_key:
-            print("[ERROR] No license key provided.")
-            return
-        
-        print("Validating license...")
+
+        license_key = validate_text(license_key, "license key", max_len=4096)
+
+        if not self.json_mode:
+            print("Validating license...")
         success, message = self.plan_manager.activate_license(license_key)
-        
+
         if success:
+            if self.json_mode:
+                print(json.dumps({"ok": True, "activated": True, "message": message}))
+                return
             print(f"[SUCCESS] {message}")
             self.cmd_status(args)
         else:
-            print(f"[ERROR] {message}")
+            self.fail(message or "License activation failed.", code=2)
     
     def cmd_scrape(self, args):
         """Execute a scraping operation."""
         self._init_components()
-        
-        platform = args.platform
-        query = args.query
-        location = args.location
-        max_results = args.max or 50
+
+        platform = validate_text(args.platform, "platform", max_len=64).lower()
+        query = validate_text(args.query, "query", max_len=200)
+        location = validate_text(args.location, "location", max_len=200) if args.location else None
+        max_results = validate_int(args.max, "max results", 1, 5000) or 50
         
         # Check if platform is allowed
         allowed = self.engine.get_available_platforms()
         if platform not in allowed:
-            print(f"[ERROR] Platform '{platform}' is not available in your current plan.")
-            print(f"Available platforms: {', '.join(allowed)}")
-            return
+            self.fail(
+                f"Platform '{platform}' is not available in your current plan. "
+                f"Available: {', '.join(allowed)}",
+                code=2,
+            )
         
         # Check limits
         can_scrape, reason = self.plan_manager.can_scrape(platform)
         if not can_scrape:
-            print(f"[ERROR] {reason}")
-            return
+            self.fail(reason or "Scrape limit reached for your plan.", code=2)
         
         print(f"\n[INFO] Starting scrape on {platform}...")
         print(f"  Query: {query}")
@@ -185,11 +268,11 @@ class LeadScraperCLI:
     def cmd_export(self, args):
         """Export leads to file."""
         self._init_components()
-        
-        output = args.output
+
+        output = validate_text(args.output, "output path", max_len=512)
         format_type = args.format or 'csv'
-        platform = args.platform
-        max_rows = args.max
+        platform = validate_text(args.platform, "platform filter", max_len=64) if args.platform else None
+        max_rows = validate_int(args.max, "max rows", 1, 100000)
         
         print(f"[INFO] Exporting leads to {format_type.upper()}...")
         
@@ -226,9 +309,9 @@ class LeadScraperCLI:
     def cmd_list(self, args):
         """List leads in database."""
         self._init_components()
-        
-        platform = args.platform
-        limit = args.limit or 20
+
+        platform = validate_text(args.platform, "platform filter", max_len=64) if args.platform else None
+        limit = validate_int(args.limit, "limit", 1, 500) or 20
         
         leads = self.db.get_leads(platform=platform, limit=limit)
         
@@ -391,18 +474,29 @@ Restore Mode: {'MERGE (keep existing + add new)' if args.merge else 'REPLACE (de
             description='Lead Scraper Pro - B2B/B2C Lead Extraction System'
         )
         parser.add_argument('--version', action='version', version=f'%(prog)s {self.VERSION}')
-        
+        parser.add_argument('--json', action='store_true',
+                            help='Emit machine-readable JSON output and JSON errors')
+
+        # --json works before or after the subcommand
+        json_parent = argparse.ArgumentParser(add_help=False)
+        json_parent.add_argument('--json', action='store_true',
+                                 help='Emit machine-readable JSON output and JSON errors')
+
         subparsers = parser.add_subparsers(dest='command', help='Available commands')
+
+        # Health command
+        health_parser = subparsers.add_parser('health', parents=[json_parent],
+                                              help='Health check (boot, DB, config)')
         
         # Status command
-        status_parser = subparsers.add_parser('status', help='Show license and usage status')
+        status_parser = subparsers.add_parser('status', parents=[json_parent], help='Show license and usage status')
         
         # Activate command
-        activate_parser = subparsers.add_parser('activate', help='Activate a license key')
+        activate_parser = subparsers.add_parser('activate', parents=[json_parent], help='Activate a license key')
         activate_parser.add_argument('-k', '--key', help='License key to activate')
         
         # Scrape command
-        scrape_parser = subparsers.add_parser('scrape', help='Scrape leads from a platform')
+        scrape_parser = subparsers.add_parser('scrape', parents=[json_parent], help='Scrape leads from a platform')
         scrape_parser.add_argument('platform', help='Platform to scrape (e.g., google_maps, justdial)')
         scrape_parser.add_argument('query', help='Search query (e.g., "restaurants", "plumbers")')
         scrape_parser.add_argument('-l', '--location', help='Location filter (e.g., "Mumbai")')
@@ -410,31 +504,31 @@ Restore Mode: {'MERGE (keep existing + add new)' if args.merge else 'REPLACE (de
         scrape_parser.add_argument('-v', '--visible', action='store_true', help='Show browser window')
         
         # Export command
-        export_parser = subparsers.add_parser('export', help='Export leads to file')
+        export_parser = subparsers.add_parser('export', parents=[json_parent], help='Export leads to file')
         export_parser.add_argument('output', help='Output file path')
         export_parser.add_argument('-f', '--format', choices=['csv', 'excel', 'json'], default='csv', help='Export format')
         export_parser.add_argument('-p', '--platform', help='Filter by platform')
         export_parser.add_argument('-m', '--max', type=int, help='Maximum rows to export')
         
         # List command
-        list_parser = subparsers.add_parser('list', help='List leads in database')
+        list_parser = subparsers.add_parser('list', parents=[json_parent], help='List leads in database')
         list_parser.add_argument('-p', '--platform', help='Filter by platform')
         list_parser.add_argument('-l', '--limit', type=int, default=20, help='Number of leads to show')
         
         # Platforms command
-        platforms_parser = subparsers.add_parser('platforms', help='List available platforms')
+        platforms_parser = subparsers.add_parser('platforms', parents=[json_parent], help='List available platforms')
         
         # Clear command
-        clear_parser = subparsers.add_parser('clear', help='Clear all leads from database')
+        clear_parser = subparsers.add_parser('clear', parents=[json_parent], help='Clear all leads from database')
         clear_parser.add_argument('--confirm', action='store_true', help='Skip confirmation prompt')
         
         # Backup command
-        backup_parser = subparsers.add_parser('backup', help='Create encrypted backup of leads')
+        backup_parser = subparsers.add_parser('backup', parents=[json_parent], help='Create encrypted backup of leads')
         backup_parser.add_argument('output', help='Output backup file path (.lsp extension recommended)')
         backup_parser.add_argument('--include-license', action='store_true', help='Include license state in backup')
         
         # Restore command
-        restore_parser = subparsers.add_parser('restore', help='Restore leads from encrypted backup')
+        restore_parser = subparsers.add_parser('restore', parents=[json_parent], help='Restore leads from encrypted backup')
         restore_parser.add_argument('input', help='Backup file path to restore from')
         restore_parser.add_argument('--merge', action='store_true', default=True, help='Merge with existing leads (default)')
         restore_parser.add_argument('--replace', action='store_true', help='Replace all existing leads')
@@ -452,6 +546,7 @@ Restore Mode: {'MERGE (keep existing + add new)' if args.merge else 'REPLACE (de
         
         # Map commands to methods
         commands = {
+            'health': self.cmd_health,
             'status': self.cmd_status,
             'activate': self.cmd_activate,
             'scrape': self.cmd_scrape,
@@ -462,10 +557,20 @@ Restore Mode: {'MERGE (keep existing + add new)' if args.merge else 'REPLACE (de
             'backup': self.cmd_backup,
             'restore': self.cmd_restore
         }
-        
+
         handler = commands.get(args.command)
         if handler:
-            handler(args)
+            self.json_mode = bool(args.json)
+            try:
+                handler(args)
+            except SystemExit:
+                raise
+            except ValidationError as e:
+                # Input validation failure -> structured error, exit 2, no traceback.
+                self.fail(str(e), code=2)
+            except Exception:
+                # Never leak stack traces or internals to clients.
+                self.fail("Command failed unexpectedly.", code=1)
         else:
             parser.print_help()
 
