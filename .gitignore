@@ -2,6 +2,7 @@
 # Private/Secret files
 .env
 .env.*
+!.env.example
 *.secret
 *.key
 credentials.json
