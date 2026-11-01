@@ -100,3 +100,7 @@ Google Maps, Google Search, Justdial, Sulekha, IndiaMART, Bing Maps, Apple Maps,
 ## Disclaimer
 
 This software collects ONLY publicly available business information. Users are responsible for compliance with applicable laws and platform Terms of Service. Automated scraping may violate a platform's ToS — scrape responsibly and at a respectful rate (built-in rate limiting helps).
+
+## Built by VisionQuantech
+
+Part of the [VisionQuantech](https://visionquantech.com/) AI automation studio. See [AI agents for business](https://visionquantech.com/ai-agents-for-business) and the guide to [AI phone answering for dental clinics](https://visionquantech.com/blog/ai-phone-answering-service-for-dental-clinics).
